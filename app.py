@@ -25,6 +25,7 @@ import streamlit as st
 # -----------------------------------------------------------------------------
 OPENAI_URL = "https://api.openai.com/v1/audio/transcriptions"
 ELEVENLABS_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 OPENAI_MODELS = ["gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"]
 
@@ -42,6 +43,23 @@ DEFAULT_PROMPT = (
     "The audio may mix Urdu, Pashto, and English. Transcribe verbatim, "
     "keeping each language in its natural script."
 )
+
+# Optional post-step: transliterate the transcript into Latin (Roman) script.
+ROMANIZE_MODEL = "gpt-4o-mini"
+ROMANIZE_SYSTEM = (
+    "You convert a transcript into Latin (Roman) script. You TRANSLITERATE; you do "
+    "NOT translate. Rules:\n"
+    "- Keep English words and phrases exactly as they are.\n"
+    "- Write Urdu as Roman Urdu and Pashto as Roman Pashto, using natural, readable "
+    "spelling (the way people type in chat).\n"
+    "- Preserve every word and the original order and code-switching. Do not add, "
+    "remove, translate, or explain anything.\n"
+    "- Output ONLY the converted text, nothing else."
+)
+
+# Devanagari/Urdu sentence terminators -> a plain period, so offline
+# transliteration doesn't turn them into stray " / " marks.
+DANDA_MAP = {"।": ".", "॥": ".", "۔": "."}
 
 UPLOAD_TYPES = ["mp3", "wav", "m4a", "ogg", "opus", "flac", "webm", "mp4", "aac", "amr"]
 
@@ -165,15 +183,18 @@ def _format_api_error(engine: str, resp: requests.Response) -> str:
     return f"{engine} returned {resp.status_code}: {detail}"
 
 
-def _run_with_failover(make_request, keys, engine, dead):
+def _run_with_failover(make_request, keys, engine, dead, extract=None):
     """Try each key until one returns HTTP 200.
 
     `make_request(key)` must build and send a fresh request (the upload body is
     single-use, so it is rebuilt per attempt) and return a requests.Response.
-    Keys that fail with a retryable error are added to the shared `dead` set so
-    the rest of a batch skips them. Returns (transcript_text, key_label)."""
+    `extract(response)` pulls the result out of a 200 (defaults to the
+    transcription APIs' {"text": ...} shape). Keys that fail with a retryable
+    error are added to the shared `dead` set so the rest of a batch skips them.
+    Returns (result_text, key_label)."""
     if not keys:
         raise RuntimeError(f"No {engine} API key configured.")
+    extract = extract or (lambda r: r.json().get("text", ""))
 
     # Skip keys already known-dead this batch; if all are dead, try them anyway.
     order = [(i, k) for i, k in enumerate(keys, 1) if k not in dead] or list(enumerate(keys, 1))
@@ -188,7 +209,7 @@ def _run_with_failover(make_request, keys, engine, dead):
             continue
 
         if resp.status_code == 200:
-            return resp.json().get("text", ""), label
+            return extract(resp), label
 
         msg = _format_api_error(engine, resp)
         if resp.status_code in RETRYABLE_STATUSES:
@@ -241,6 +262,44 @@ def transcribe_elevenlabs(raw, filename, ext, keys, lang, dead):
     return _run_with_failover(make_request, keys, "ElevenLabs", dead)
 
 
+def romanize_offline(text: str) -> str:
+    """Transliterate to Latin script with no API call (unidecode). Great for
+    Devanagari output; weaker on Arabic script (which drops short vowels)."""
+    from unidecode import unidecode
+
+    for src, dst in DANDA_MAP.items():
+        text = text.replace(src, dst)
+    return re.sub(r"[ \t]+", " ", unidecode(text)).strip()
+
+
+def romanize_text(text, keys, dead, model=ROMANIZE_MODEL):
+    """Transliterate a transcript into Latin (Roman) script via OpenAI chat,
+    reusing the same multi-key failover. English stays English; Urdu -> Roman
+    Urdu; Pashto -> Roman Pashto. Returns the converted text."""
+    payload = {
+        "model": model,
+        "temperature": 0,
+        "messages": [
+            {"role": "system", "content": ROMANIZE_SYSTEM},
+            {"role": "user", "content": text},
+        ],
+    }
+
+    def make_request(key):
+        return requests.post(
+            OPENAI_CHAT_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=120,
+        )
+
+    result, _ = _run_with_failover(
+        make_request, keys, "OpenAI (romanize)", dead,
+        extract=lambda r: r.json()["choices"][0]["message"]["content"].strip(),
+    )
+    return result
+
+
 def build_zip(items) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -282,6 +341,27 @@ elif len(keys) == 1:
     st.sidebar.info("🔑 1 key loaded. Add more (secrets or above) for failover.")
 else:
     st.sidebar.error("No API key found. Add keys to secrets.toml or the box above.")
+
+# OpenAI keys power the optional romanization step even when transcribing with
+# ElevenLabs (ElevenLabs' own extra-keys box must not feed the OpenAI list).
+openai_keys = get_keys(
+    "OPENAI_API_KEYS", "OPENAI_API_KEY", extra if engine == "OpenAI" else "")
+
+romanize = st.sidebar.checkbox(
+    "Romanize output (Roman Urdu / Pashto + English)", value=True,
+    help="Transliterates the transcript into Latin script so Urdu and Pashto come "
+         "out in Roman form instead of Arabic/Devanagari.",
+)
+romanize_method = "Offline (free)"
+if romanize:
+    romanize_method = st.sidebar.radio(
+        "Romanize method",
+        ["Offline (free)", "OpenAI (higher quality)"],
+        help="Offline works instantly with no API or credits. OpenAI produces more "
+             "natural Roman spelling but needs OpenAI credits (falls back to offline).",
+    )
+    if romanize_method.startswith("OpenAI") and not openai_keys:
+        st.sidebar.caption("⚠️ No OpenAI key found — will use offline transliteration.")
 
 language_label = st.sidebar.selectbox("Language", list(LANGUAGES.keys()))
 lang_codes = LANGUAGES[language_label]
@@ -338,7 +418,8 @@ if transcribe_clicked and uploaded and keys:
         send_name = Path(uf.name).with_suffix("." + send_ext).name
 
         entry = {"name": uf.name, "audio": raw, "mime": MIME_BY_EXT.get(ext),
-                 "note": note, "text": "", "used": None, "error": None}
+                 "note": note, "text": "", "used": None, "error": None,
+                 "romanized": False, "romanize_error": None}
         try:
             if engine == "OpenAI":
                 entry["text"], entry["used"] = transcribe_openai(
@@ -349,6 +430,22 @@ if transcribe_clicked and uploaded and keys:
                     send_bytes, send_name, send_ext, keys, lang_codes["elevenlabs"], dead)
         except Exception as exc:
             entry["error"] = str(exc)
+
+        # Optional: transliterate the transcript into Roman/Latin script.
+        if romanize and entry["error"] is None and entry["text"].strip():
+            progress.progress(idx / len(uploaded), text=f"Romanizing {uf.name}…")
+            use_openai = romanize_method.startswith("OpenAI") and openai_keys
+            if use_openai:
+                try:
+                    entry["text"] = romanize_text(entry["text"], openai_keys, dead)
+                    entry["romanized"] = "OpenAI"
+                except Exception as exc:
+                    entry["text"] = romanize_offline(entry["text"])
+                    entry["romanized"] = "offline"
+                    entry["romanize_error"] = f"OpenAI romanize failed, used offline ({exc})"
+            else:
+                entry["text"] = romanize_offline(entry["text"])
+                entry["romanized"] = "offline"
         results.append(entry)
 
     progress.progress(1.0, text="Done.")
@@ -374,6 +471,10 @@ if results:
 
         if item.get("used"):
             st.caption(f"✅ Transcribed with {engine_used} · {item['used']}")
+        if item.get("romanized"):
+            st.caption(f"🔤 Romanized to Latin script · {item['romanized']} method.")
+        if item.get("romanize_error"):
+            st.caption(f"⚠️ {item['romanize_error']}")
         base = Path(item["name"]).stem + ".txt"
         edited = st.text_area("Transcript", value=item["text"], height=180, key=f"txt_{i}")
         st.download_button(
