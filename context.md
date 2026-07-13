@@ -28,6 +28,7 @@ voice-transcriber/
 ├── requirements.txt        # streamlit, requests, pydub, unidecode
 ├── packages.txt            # ffmpeg  (apt package installed by Streamlit Cloud)
 ├── .streamlit/
+│   ├── config.toml          # violet light theme (committed — no secrets)
 │   └── secrets.toml         # API keys — GITIGNORED, never committed
 ├── .gitignore              # ignores secrets.toml, venv/, __pycache__, *.pyc
 ├── README.md               # user-facing run & deploy steps
@@ -77,7 +78,10 @@ Each engine takes a **list** of keys and rotates through them:
 
 ## 5. Romanization (Latin-script output)
 
-Optional post-step (default ON). Two methods, chosen in the sidebar:
+Applied at **display time** (default ON), so the sidebar toggle switches each
+transcript between Roman and native **instantly, without re-transcribing** —
+`resolve_display_text()` picks the version from the current toggle, and the
+native transcript is always kept in `results`. Two methods, chosen in the sidebar:
 - **Offline (free)** — `romanize_offline()` via `unidecode`. No API, instant.
   Great on **Devanagari**; **weak on Arabic script** (Arabic omits short vowels,
   so it yields consonant-heavy output like "myr nm" for میرا نام).
@@ -87,7 +91,9 @@ Optional post-step (default ON). Two methods, chosen in the sidebar:
 
 Romanization reuses the OpenAI keys (via `openai_keys`) even when transcribing
 with ElevenLabs/Groq. `DANDA_MAP` converts Devanagari/Urdu sentence terminators
-(।, ॥, ۔) to periods so they don't become stray " / " marks.
+(।, ॥, ۔) to periods so they don't become stray " / " marks. Offline romanization
+is recomputed each render (instant); OpenAI romanization is cached per
+result+run in `roman_openai_{run_id}_{i}` so toggling doesn't re-hit the API.
 
 > Interaction to remember: **ElevenLabs → Devanagari → Offline romanize = good.**
 > **Whisper (OpenAI/Groq) → Arabic script → Offline romanize = poor** (use the
@@ -156,6 +162,15 @@ it lands on PATH so pydub finds it.
 - **Offline romanize** is script-dependent (see §5).
 - **Failover** distinguishes retryable (key) vs fatal (request) errors so it
   doesn't waste keys on a bad file.
+- **Re-transcribe showed stale text** → the transcript boxes now use run-scoped
+  keys (`txt_{run_id}_{i}_{mode_tag}`). Each transcription bumps `run_id`, forcing
+  the boxes to re-seed with the new transcript instead of a keyed widget's old
+  value. Each result also shows the **model** used, so a re-run is visible even
+  when two models return identical text.
+- **Romanization is display-time** (see §5), so the toggle is instant.
+- **UI/theme** — `.streamlit/config.toml` sets a violet light theme; `app.py`
+  injects inline CSS for the gradient hero and uses bordered `st.container`s for
+  the input and result cards.
 
 ## 11. Known limitations
 
