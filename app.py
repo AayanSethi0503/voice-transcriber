@@ -343,40 +343,176 @@ st.set_page_config(
     page_icon="🎙️",
     layout="centered",
     initial_sidebar_state="expanded",
+    menu_items={"about": "Voice Note Transcriber — English · Urdu · Pashto speech-to-text."},
 )
 
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 860px; }
-      .hero {
-          background: linear-gradient(135deg, #7C4DFF 0%, #536DFE 45%, #00B8D4 100%);
-          border-radius: 20px; padding: 2.1rem 1.6rem; text-align: center; color: #fff;
-          box-shadow: 0 12px 34px rgba(83,109,254,.30); margin-bottom: 1.3rem;
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
+
+      :root {
+        --vt-violet: #7C4DFF;
+        --vt-indigo: #536DFE;
+        --vt-cyan:   #00B8D4;
+        --vt-grad: linear-gradient(135deg, #7C4DFF 0%, #536DFE 48%, #00B8D4 100%);
+        --vt-ink:    #1E1E2E;
+        --vt-muted:  #6B6B80;
+        --vt-line:   rgba(124,77,255,.16);
+        --vt-surface: #FFFFFF;
+        --vt-soft:   #F6F4FF;
+        --vt-radius: 16px;
       }
-      .hero .emoji { font-size: 2.7rem; line-height: 1; }
-      .hero h1 { margin: .35rem 0; font-size: 2.15rem; font-weight: 800;
-                 color: #fff; letter-spacing: -.6px; }
-      .hero p { margin: 0; font-size: 1.03rem; opacity: .96; color: #fff; }
-      .chips { margin-top: 1.05rem; display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
-      .chips span { background: rgba(255,255,255,.17); border: 1px solid rgba(255,255,255,.30);
-          padding: .32rem .72rem; border-radius: 999px; font-size: .82rem; font-weight: 600; }
-      .step-label { font-weight: 700; font-size: 1.06rem; margin: .1rem 0 .7rem; }
-      .or-sep { text-align: center; margin: .5rem 0; opacity: .55; font-weight: 700; letter-spacing: .5px; }
-      .stButton > button, .stDownloadButton > button { border-radius: 10px; font-weight: 600; }
+
+      html, body, [class*="css"], .stMarkdown, .stApp {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      .block-container { padding-top: 1.6rem; padding-bottom: 3.5rem; max-width: 880px; }
+
+      /* ---------- Hero ---------- */
+      .hero {
+        position: relative; overflow: hidden;
+        background: var(--vt-grad);
+        border-radius: 22px; padding: 2.4rem 1.6rem 2.1rem;
+        text-align: center; color: #fff;
+        box-shadow: 0 18px 48px -12px rgba(83,109,254,.55);
+        margin-bottom: 1.5rem;
+      }
+      .hero::before {
+        content: ""; position: absolute; inset: 0;
+        background:
+          radial-gradient(60% 90% at 15% 0%, rgba(255,255,255,.28), transparent 60%),
+          radial-gradient(50% 80% at 100% 100%, rgba(0,0,0,.12), transparent 55%);
+        pointer-events: none;
+      }
+      .hero > * { position: relative; z-index: 1; }
+      .hero .badge {
+        display: inline-flex; align-items: center; gap: .4rem;
+        background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.32);
+        padding: .28rem .8rem; border-radius: 999px;
+        font-size: .74rem; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+        margin-bottom: .85rem;
+      }
+      .hero .emoji { font-size: 2.9rem; line-height: 1; filter: drop-shadow(0 4px 10px rgba(0,0,0,.18)); }
+      .hero h1 { margin: .45rem 0 .3rem; font-size: 2.3rem; font-weight: 800;
+                 color: #fff; letter-spacing: -.8px; line-height: 1.1; }
+      .hero p { margin: 0 auto; max-width: 30rem; font-size: 1.02rem; opacity: .95; color: #fff; line-height: 1.5; }
+      .chips { margin-top: 1.25rem; display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+      .chips span {
+        background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
+        padding: .36rem .8rem; border-radius: 999px; font-size: .82rem; font-weight: 600;
+        backdrop-filter: blur(4px);
+      }
+
+      /* ---------- Section step headers ---------- */
+      .step-label {
+        display: flex; align-items: center; gap: .6rem;
+        font-weight: 700; font-size: 1.12rem; color: var(--vt-ink);
+        margin: .1rem 0 .9rem;
+      }
+      .step-label .num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.7rem; height: 1.7rem; border-radius: 9px;
+        background: var(--vt-grad); color: #fff; font-size: .95rem; font-weight: 800;
+        box-shadow: 0 5px 12px -3px rgba(124,77,255,.5); flex: none;
+      }
+      .step-label .count { margin-left: auto; font-size: .8rem; font-weight: 600; color: var(--vt-muted); }
+      .or-sep {
+        display: flex; align-items: center; gap: .8rem;
+        text-align: center; margin: 1rem 0 .6rem; color: var(--vt-muted);
+        font-weight: 700; font-size: .78rem; letter-spacing: 1px; text-transform: uppercase;
+      }
+      .or-sep::before, .or-sep::after {
+        content: ""; flex: 1; height: 1px; background: var(--vt-line);
+      }
+
+      /* ---------- Bordered containers (cards) ---------- */
+      [data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: var(--vt-radius) !important;
+        border: 1px solid var(--vt-line) !important;
+        box-shadow: 0 4px 20px -12px rgba(30,30,46,.18);
+        background: var(--vt-surface);
+      }
+
+      /* ---------- Buttons ---------- */
+      .stButton > button, .stDownloadButton > button {
+        border-radius: 11px; font-weight: 600; transition: transform .12s ease, box-shadow .12s ease;
+      }
+      .stButton > button:hover, .stDownloadButton > button:hover { transform: translateY(-1px); }
       button[kind="primary"], [data-testid="stBaseButton-primary"] {
-          background: linear-gradient(135deg, #7C4DFF, #536DFE) !important; border: none !important;
-          box-shadow: 0 6px 16px rgba(124,77,255,.35) !important; }
-      section[data-testid="stSidebar"] { border-right: 1px solid rgba(124,77,255,.14); }
+        background: var(--vt-grad) !important; border: none !important; color: #fff !important;
+        box-shadow: 0 8px 20px -6px rgba(124,77,255,.5) !important;
+      }
+      button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover {
+        box-shadow: 0 12px 26px -6px rgba(124,77,255,.6) !important;
+      }
+      .stDownloadButton > button {
+        border: 1px solid var(--vt-line) !important; background: var(--vt-soft) !important;
+        color: var(--vt-violet) !important;
+      }
+
+      /* ---------- File uploader dropzone ---------- */
+      [data-testid="stFileUploaderDropzone"] {
+        border: 1.5px dashed var(--vt-line) !important; border-radius: 13px !important;
+        background: var(--vt-soft) !important; transition: border-color .15s ease, background .15s ease;
+      }
+      [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: var(--vt-violet) !important; background: #F0ECFF !important;
+      }
+
+      /* ---------- Text area (transcript) ---------- */
+      .stTextArea textarea {
+        border-radius: 12px !important; font-size: .97rem; line-height: 1.6;
+        border-color: var(--vt-line) !important;
+      }
+      .stTextArea textarea:focus {
+        border-color: var(--vt-violet) !important; box-shadow: 0 0 0 3px rgba(124,77,255,.15) !important;
+      }
+
+      /* ---------- Result meta pills ---------- */
+      .meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .1rem 0 .55rem; }
+      .pill {
+        display: inline-flex; align-items: center; gap: .3rem;
+        padding: .22rem .62rem; border-radius: 999px; font-size: .76rem; font-weight: 600;
+        border: 1px solid transparent; white-space: nowrap;
+      }
+      .pill.ok    { background: #E7F7EE; color: #12805B; border-color: #BFE9D3; }
+      .pill.info  { background: var(--vt-soft); color: var(--vt-violet); border-color: var(--vt-line); }
+      .pill.count { margin-left: auto; background: transparent; color: var(--vt-muted);
+                    font-family: 'JetBrains Mono', monospace; font-size: .74rem; }
+      .file-title { display: flex; align-items: center; gap: .5rem; font-weight: 700;
+                    font-size: 1.02rem; color: var(--vt-ink); margin-bottom: .5rem; word-break: break-all; }
+      .file-title .ic {
+        display: inline-flex; align-items: center; justify-content: center; flex: none;
+        width: 1.9rem; height: 1.9rem; border-radius: 8px; background: var(--vt-soft); font-size: 1rem;
+      }
+
+      /* ---------- Sidebar ---------- */
+      section[data-testid="stSidebar"] { border-right: 1px solid var(--vt-line); }
+      section[data-testid="stSidebar"] .block-container { padding-top: 1.2rem; }
+      .side-head {
+        display: flex; align-items: center; gap: .5rem;
+        font-size: .78rem; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+        color: var(--vt-muted); margin: .3rem 0 .55rem;
+      }
+
+      /* ---------- Progress ---------- */
+      [data-testid="stProgress"] > div > div > div > div { background: var(--vt-grad) !important; }
+
+      /* ---------- Footer ---------- */
+      .vt-footer { text-align: center; color: var(--vt-muted); font-size: .82rem;
+                   margin-top: 2.2rem; padding-top: 1.2rem; border-top: 1px solid var(--vt-line); }
+      .vt-footer b { color: var(--vt-violet); }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 with st.sidebar:
-    st.markdown("## ⚙️ Settings")
+    st.markdown('<div class="side-head" style="font-size:.95rem;color:var(--vt-ink)">'
+                '⚙️&nbsp; Settings</div>', unsafe_allow_html=True)
 
-    st.markdown("**🎛️ Transcription engine**")
+    st.markdown('<div class="side-head">🎛️ Transcription engine</div>', unsafe_allow_html=True)
     engine = st.radio(
         "Transcription engine", ["OpenAI", "ElevenLabs Scribe", "Groq Whisper"],
         label_visibility="collapsed")
@@ -409,7 +545,7 @@ with st.sidebar:
         "OPENAI_API_KEYS", "OPENAI_API_KEY", extra if engine == "OpenAI" else "")
 
     st.divider()
-    st.markdown("**🌐 Output**")
+    st.markdown('<div class="side-head">🌐 Output</div>', unsafe_allow_html=True)
     language_label = st.selectbox("Language", list(LANGUAGES.keys()))
     lang_codes = LANGUAGES[language_label]
 
@@ -435,9 +571,10 @@ with st.sidebar:
 st.markdown(
     """
     <div class="hero">
+      <div class="badge">🔊 Speech → Text</div>
       <div class="emoji">🎙️</div>
       <h1>Voice Note Transcriber</h1>
-      <p>English · Urdu · Pashto — accurate even when they're mixed in one recording</p>
+      <p>English · Urdu · Pashto — accurate even when they're mixed together in a single recording.</p>
       <div class="chips">
         <span>⚡ 3 engines</span><span>🔁 Auto key-failover</span>
         <span>🔤 Romanize</span><span>🎤 Record or upload</span>
@@ -448,7 +585,8 @@ st.markdown(
 )
 
 with st.container(border=True):
-    st.markdown('<div class="step-label">1️⃣&nbsp; Add your audio</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step-label"><span class="num">1</span> Add your audio</div>',
+                unsafe_allow_html=True)
     uploaded = st.file_uploader(
         "Upload voice notes", type=UPLOAD_TYPES, accept_multiple_files=True,
         help="WhatsApp .opus / .m4a supported. .opus and .amr are auto-converted to mp3.",
@@ -535,13 +673,15 @@ if results:
                 else "oa" if romanize_method.startswith("OpenAI") else "roman")
     ok_count = sum(1 for it in results if not it.get("error"))
     st.markdown(
-        f'<div class="step-label">2️⃣&nbsp; Your transcripts '
-        f'<span style="opacity:.5;font-weight:500">({ok_count}/{len(results)} done)</span></div>',
+        f'<div class="step-label"><span class="num">2</span> Your transcripts'
+        f'<span class="count">{ok_count}/{len(results)} done</span></div>',
         unsafe_allow_html=True)
     zip_items = []
     for i, item in enumerate(results):
         with st.container(border=True):
-            st.markdown(f"**📄 {item['name']}**")
+            st.markdown(
+                f'<div class="file-title"><span class="ic">📄</span>{item["name"]}</div>',
+                unsafe_allow_html=True)
             if item.get("audio") is not None:
                 st.audio(item["audio"], format=item.get("mime") or "audio/mpeg")
             if item.get("note"):
@@ -553,18 +693,17 @@ if results:
             display, roman_note = resolve_display_text(
                 f"{run_id}_{i}", item["text"], romanize, romanize_method, openai_keys)
 
-            left, right = st.columns([3, 2])
-            with left:
-                if item.get("used"):
-                    model_str = f" · {item['model']}" if item.get("model") else ""
-                    st.caption(f"✅ {engine_used}{model_str} · {item['used']}")
-                st.caption(f"🔤 Romanized · {roman_note}" if roman_note
-                           else "🔡 Original native script")
-            with right:
-                st.markdown(
-                    f"<div style='text-align:right;opacity:.6;font-size:.85rem'>"
-                    f"📝 {len(display.split())} words · {len(display)} chars</div>",
-                    unsafe_allow_html=True)
+            # Meta pills: engine/model/key used, script mode, and word/char count.
+            pills = []
+            if item.get("used"):
+                model_str = f" · {item['model']}" if item.get("model") else ""
+                pills.append(f'<span class="pill ok">✅ {engine_used}{model_str} · {item["used"]}</span>')
+            pills.append(
+                f'<span class="pill info">🔤 Romanized · {roman_note}</span>' if roman_note
+                else '<span class="pill info">🔡 Native script</span>')
+            pills.append(
+                f'<span class="pill count">📝 {len(display.split())} words · {len(display)} chars</span>')
+            st.markdown(f'<div class="meta-row">{"".join(pills)}</div>', unsafe_allow_html=True)
 
             base = Path(item["name"]).stem + ".txt"
             # run_id + mode_tag in the key so a new transcription (or a romanize
@@ -583,3 +722,9 @@ if results:
             "⬇️ Download all transcripts (.zip)", data=build_zip(zip_items),
             file_name="transcripts.zip", mime="application/zip",
             key="dl_zip", type="primary", use_container_width=True)
+
+st.markdown(
+    '<div class="vt-footer">🎙️ <b>Voice Note Transcriber</b> · '
+    'English · Urdu · Pashto · code-switched speech<br>'
+    'Transcripts stay in your session only — nothing is stored.</div>',
+    unsafe_allow_html=True)
